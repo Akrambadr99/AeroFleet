@@ -1,0 +1,15 @@
+/* eslint-disable @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access */
+import{expect,test}from'@playwright/test';
+test.beforeEach(async({page})=>{await page.addInitScript(()=>localStorage.clear())});
+test('opens the command center',async({page})=>{await page.goto('/');await expect(page.getByRole('heading',{name:"AeroFleet command center"})).toBeVisible()});
+test('navigates to the connected operations workspace',async({page})=>{await page.goto('/');await page.getByRole('link',{name:'Operations'}).click();await expect(page.getByText(/LIVE WORKSPACE/)).toBeVisible()});
+test('renders derived analytics',async({page})=>{await page.goto('/analytics');await expect(page.getByRole('heading',{name:'Operational analytics'})).toBeVisible()});
+test("Aircraft grounding route is operational",async({page})=>{await page.goto('/aircraft-grounding');await expect(page.getByRole('heading',{name:"Aircraft grounding"})).toBeVisible();await expect(page.getByText(/revision 1/).first()).toBeVisible()})
+test("Maintenance windows route is operational",async({page})=>{await page.goto('/maintenance-window');await expect(page.getByRole('heading',{name:"Maintenance windows"})).toBeVisible();await expect(page.getByText(/revision 1/).first()).toBeVisible()})
+test("Component life limits route is operational",async({page})=>{await page.goto('/component-life');await expect(page.getByRole('heading',{name:"Component life limits"})).toBeVisible();await expect(page.getByText(/revision 1/).first()).toBeVisible()})
+test("Inspection release route is operational",async({page})=>{await page.goto('/inspection-release');await expect(page.getByRole('heading',{name:"Inspection release"})).toBeVisible();await expect(page.getByText(/revision 1/).first()).toBeVisible()})
+test("Flight assignment conflicts route is operational",async({page})=>{await page.goto('/flight-assignment');await expect(page.getByRole('heading',{name:"Flight assignment conflicts"})).toBeVisible();await expect(page.getByText(/revision 1/).first()).toBeVisible()})
+test("Deferred defect control route is operational",async({page})=>{await page.goto('/deferred-defect');await expect(page.getByRole('heading',{name:"Deferred defect control"})).toBeVisible();await expect(page.getByText(/revision 1/).first()).toBeVisible()})
+test("Rotable component custody route is operational",async({page})=>{await page.goto('/parts-rotable');await expect(page.getByRole('heading',{name:"Rotable component custody"})).toBeVisible();await expect(page.getByText(/revision 1/).first()).toBeVisible()})
+test("Return to service route is operational",async({page})=>{await page.goto('/return-to-service');await expect(page.getByRole('heading',{name:"Return to service"})).toBeVisible();await expect(page.getByText(/revision 1/).first()).toBeVisible()})
+test('retains keyboard-visible product navigation',async({page})=>{await page.goto('/');await page.keyboard.press('Tab');await expect(page.locator(':focus')).toBeVisible()});

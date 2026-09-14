@@ -16,3 +16,6 @@ test('retains keyboard-visible product navigation',async({page})=>{await page.go
 test('Availability timeline deep workflow',async({page})=>{await page.goto('/fleet/N742AX/availability');await expect(page.getByRole('heading',{name:'Aircraft availability timeline',exact:true})).toBeVisible();await expect(page.getByText('N742AX',{exact:false}).first()).toBeVisible()});
 test('Availability timeline evidence 1',async({page})=>{await page.goto('/fleet/N742AX/availability');await expect(page.getByText('Grounded for inspection',{exact:false}).first()).toBeVisible()});
 test('Availability timeline evidence 2',async({page})=>{await page.goto('/fleet/N742AX/availability');await expect(page.getByText('Hangar H2',{exact:false}).first()).toBeVisible()});
+
+
+test('Readiness control restores and recovers domain state',async({page})=>{await page.goto('/fleet/N742AX/readiness?asOf=2026-09-16&focus=DEF-204');await expect(page.getByRole('heading',{name:"Aircraft readiness control",exact:true})).toBeVisible();await page.getByLabel('Authority').selectOption("release engineer");await page.getByRole('button',{name:'Run domain bulk action'}).click();await expect(page.getByRole('status')).toContainText('1 succeeded; 1 require recovery');await expect(page.getByRole('button',{name:'Retry failed records'})).toBeVisible()});

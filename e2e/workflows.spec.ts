@@ -19,3 +19,6 @@ test('Availability timeline evidence 2',async({page})=>{await page.goto('/fleet/
 
 
 test('Readiness control restores and recovers domain state',async({page})=>{await page.goto('/fleet/N742AX/readiness?asOf=2026-09-16&focus=DEF-204');await expect(page.getByRole('heading',{name:"Aircraft readiness control",exact:true})).toBeVisible();await page.getByLabel('Authority').selectOption("release engineer");await page.getByRole('button',{name:'Run domain bulk action'}).click();await expect(page.getByRole('status')).toContainText('1 succeeded; 1 require recovery');await expect(page.getByRole('button',{name:'Retry failed records'})).toBeVisible()});
+
+
+test('Swap impact restores a feasible decision',async({page})=>{await page.goto('/fleet/N742AX/swaps/N811QX?hours=7');await expect(page.getByRole('heading',{name:"Aircraft swap impact simulator",exact:true})).toBeVisible();await expect(page.getByRole('region',{name:'Scenario result'})).toContainText(/Feasible|Blocked/);await expect(page.getByText("flight",{exact:false}).first()).toBeVisible()});

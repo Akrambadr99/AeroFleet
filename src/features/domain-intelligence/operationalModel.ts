@@ -1,0 +1,5 @@
+export interface OperationalNode{id:string;label:string;capacity:number;demand:number;dependsOn:string[];effectiveFrom:string;effectiveTo:string;version:number}
+export const operationalNodes:OperationalNode[]=[{"id":"AF-204","label":"Hydraulic inspection","capacity":6,"demand":4,"dependsOn":[],"effectiveFrom":"2026-09-01","effectiveTo":"2026-12-31","version":2},{"id":"AF-219","label":"Swap qualification","capacity":8,"demand":5,"dependsOn":["AF-204"],"effectiveFrom":"2026-09-01","effectiveTo":"2026-09-20","version":3},{"id":"AF-225","label":"Deferred defect","capacity":5,"demand":7,"dependsOn":["AF-219"],"effectiveFrom":"2026-09-18","effectiveTo":"2026-12-31","version":4},{"id":"AF-231","label":"Release packet","capacity":9,"demand":3,"dependsOn":["AF-204"],"effectiveFrom":"2026-09-01","effectiveTo":"2026-12-31","version":5}];
+export const scenarioModes=["Conservative dispatch","Balanced recovery","Maximum utilization"] as const;
+export const metricLabels=["Eligible aircraft","Dispatch hours","Reliability exposure"] as const;
+export const domainCoefficient=1.4;export const secondaryWeight=18;export const riskWeight=7;

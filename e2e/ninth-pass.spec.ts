@@ -1,0 +1,20 @@
+import { expect, test } from '@playwright/test'
+
+test('release evidence changes swap eligibility and protects its dependency', async ({ page }) => {
+  await page.goto('/fleet/N742AX/swaps/N811QX?hours=5')
+  await page.getByLabel('Decision authority').selectOption('maintenance controller')
+  await expect(page.getByRole('button', { name: 'Approve swap plan' })).toBeDisabled()
+  await page.goto('/fleet/N742AX/availability')
+  await page.getByLabel('Engineering signature present').check()
+  await page.getByLabel('Authority').selectOption('approver')
+  await page.getByLabel('Release rationale').fill('Engineering inspection signed and flight window verified.')
+  await page.getByRole('button', { name: 'Record return to service' }).click()
+  await page.goto('/fleet/N742AX/swaps/N811QX?hours=5')
+  await page.getByLabel('Decision authority').selectOption('maintenance controller')
+  await expect(page.getByRole('button', { name: 'Approve swap plan' })).toBeEnabled()
+  await page.getByRole('button', { name: 'Approve swap plan' }).click()
+  await expect(page.getByText('Swap: adopted at 5 hours')).toBeVisible()
+  await page.goto('/fleet/N742AX/availability')
+  await page.getByRole('button', { name: 'Reopen release' }).click()
+  await expect(page.getByRole('status')).toContainText('adopted swap plan depends')
+})

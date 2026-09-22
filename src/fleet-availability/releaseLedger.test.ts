@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { MemoryStorage } from '../data/memory-storage'
-import { commitFleet, fleetBlockers, readFleetDecision, swapStaleReasons, transitionFleet } from './releaseLedger'
+import { commitFleet, fleetBlockers, readFleetDecision, swapReviewPolicy, swapStaleReasons, transitionFleet } from './releaseLedger'
 
 describe('durable fleet release and swap dependency', () => {
   it('persists release evidence across repository reads', () => {
@@ -29,9 +29,12 @@ describe('durable fleet release and swap dependency', () => {
     const superseded = commitFleet(storage, { type: 'supersede-inspection', reason: 'A new defect inspection was signed.' })
     expect(swapStaleReasons(readFleetDecision(storage))).toHaveLength(1)
     expect(superseded.maintenanceRevision).toBe(1)
-    expect(() => commitFleet(storage, { type: 'revalidate-swap', reason: 'short' })).toThrow(/Explain/)
-    const restored = commitFleet(storage, { type: 'revalidate-swap', reason: 'New inspection confirms dispatch readiness.' })
+    expect(swapReviewPolicy(superseded, 'maintenance controller')).toMatchObject({ allowed: false, queue: 'release-review' })
+    expect(() => commitFleet(storage, { type: 'revalidate-swap', actor: 'maintenance controller', reason: 'New inspection confirms dispatch readiness.' })).toThrow(/release engineer/)
+    expect(() => commitFleet(storage, { type: 'revalidate-swap', actor: 'release engineer', reason: 'short' })).toThrow(/Explain/)
+    const restored = commitFleet(storage, { type: 'revalidate-swap', actor: 'release engineer', reason: 'New inspection confirms dispatch readiness.' })
     expect(swapStaleReasons(restored)).toEqual([])
     expect(restored.history.at(-1)?.action).toBe('swap-revalidated')
+    expect(restored.history.at(-1)?.actor).toBe('release engineer')
   })
 })

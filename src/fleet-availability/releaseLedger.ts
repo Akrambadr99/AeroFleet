@@ -5,6 +5,7 @@ export interface FleetEvent {
   action: 'release' | 'swap-adopted' | 'release-reopened' | 'inspection-superseded' | 'swap-revalidated'
   source: string
   reason: string
+  actor?: string
 }
 export interface FleetDecision {
   revision: number
@@ -13,19 +14,20 @@ export interface FleetDecision {
   swapHours: number | null
   maintenanceRevision: number
   swapEvidenceRevision: number | null
+  inspectionOwner: string | null
   history: readonly FleetEvent[]
 }
 export type FleetAction =
   | { type: 'release'; flightId: string; at: string; signed: boolean; reason: string }
   | { type: 'adopt-swap'; hours: number }
   | { type: 'reopen-release'; reason: string }
-  | { type: 'supersede-inspection'; reason: string }
-  | { type: 'revalidate-swap'; reason: string }
+  | { type: 'supersede-inspection'; reason: string; actor?: string }
+  | { type: 'revalidate-swap'; reason: string; actor: string }
 
 export const fleetKey = 'aerofleet:flight-release:v1'
 export const initialFleetDecision: FleetDecision = {
   revision: 0, flightId: 'AX417', releaseAt: null, swapHours: null, maintenanceRevision: 0,
-  swapEvidenceRevision: null, history: [],
+  swapEvidenceRevision: null, inspectionOwner: null, history: [],
 }
 
 export function readFleetDecision(storage: StoragePort): FleetDecision {
@@ -37,10 +39,19 @@ export function readFleetDecision(storage: StoragePort): FleetDecision {
     !('releaseAt' in value) || (value.releaseAt !== null && typeof value.releaseAt !== 'string') ||
     !('swapHours' in value) || (value.swapHours !== null && typeof value.swapHours !== 'number') ||
     !('flightId' in value) || typeof value.flightId !== 'string') throw new Error('Invalid fleet release record.')
-  const record = value as Omit<FleetDecision, 'maintenanceRevision' | 'swapEvidenceRevision'> &
-    Partial<Pick<FleetDecision, 'maintenanceRevision' | 'swapEvidenceRevision'>>
+  const record = value as Omit<FleetDecision, 'maintenanceRevision' | 'swapEvidenceRevision' | 'inspectionOwner'> &
+    Partial<Pick<FleetDecision, 'maintenanceRevision' | 'swapEvidenceRevision' | 'inspectionOwner'>>
   return { ...record, maintenanceRevision: record.maintenanceRevision ?? 0,
-    swapEvidenceRevision: record.swapEvidenceRevision ?? (record.swapHours === null ? null : 0) }
+    swapEvidenceRevision: record.swapEvidenceRevision ?? (record.swapHours === null ? null : 0), inspectionOwner: record.inspectionOwner ?? null }
+}
+
+export function swapReviewPolicy(state: FleetDecision, actor: string): { allowed: boolean; blockers: string[]; queue: 'dispatch' | 'release-review' } {
+  const blockers = swapStaleReasons(state)
+  if (!blockers.length) return { allowed: false, blockers: ['No stale swap requires independent review.'], queue: 'dispatch' }
+  const authorization: string[] = []
+  if (actor !== 'release engineer') authorization.push('Only a release engineer may review superseded inspection evidence.')
+  if (actor === state.inspectionOwner) authorization.push('The inspection author cannot independently revalidate the swap.')
+  return { allowed: authorization.length === 0, blockers: authorization, queue: 'release-review' }
 }
 
 export function swapStaleReasons(state: FleetDecision): string[] {
@@ -75,10 +86,11 @@ export function transitionFleet(state: FleetDecision, action: FleetAction): Flee
     case 'supersede-inspection':
       if (!state.releaseAt) throw new Error('A release must exist before inspection evidence can be superseded.')
       if (action.reason.trim().length < 12) throw new Error('Explain the new inspection evidence.')
-      next = { ...state, maintenanceRevision: state.maintenanceRevision + 1 }
+      next = { ...state, maintenanceRevision: state.maintenanceRevision + 1, inspectionOwner: action.actor ?? 'maintenance controller' }
       break
     case 'revalidate-swap':
       if (!swapStaleReasons(state).length) throw new Error('There is no stale swap to revalidate.')
+      { const policy = swapReviewPolicy(state, action.actor); if (!policy.allowed) throw new Error(policy.blockers[0]) }
       if (action.reason.trim().length < 12) throw new Error('Explain the revalidation decision.')
       next = { ...state, swapEvidenceRevision: state.maintenanceRevision }
       break
@@ -88,6 +100,7 @@ export function transitionFleet(state: FleetDecision, action: FleetAction): Flee
     action: action.type === 'adopt-swap' ? 'swap-adopted' : action.type === 'reopen-release' ? 'release-reopened' : action.type === 'supersede-inspection' ? 'inspection-superseded' : action.type === 'revalidate-swap' ? 'swap-revalidated' : 'release',
     source: action.type === 'adopt-swap' || action.type === 'revalidate-swap' ? 'swap-impact' : 'availability-timeline',
     reason: action.type === 'adopt-swap' ? 'Adopted feasible swap at ' + String(action.hours) + ' hours' : action.reason,
+    ...(('actor' in action && action.actor) ? { actor: action.actor } : {}),
   }
   return { ...next, revision: event.revision, history: [...state.history, event] }
 }

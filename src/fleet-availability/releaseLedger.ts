@@ -2,7 +2,7 @@ import type { StoragePort } from '../workspace/repository'
 
 export interface FleetEvent {
   revision: number
-  action: 'release' | 'swap-adopted' | 'release-reopened'
+  action: 'release' | 'swap-adopted' | 'release-reopened' | 'inspection-superseded' | 'swap-revalidated'
   source: string
   reason: string
 }
@@ -11,16 +11,21 @@ export interface FleetDecision {
   flightId: string
   releaseAt: string | null
   swapHours: number | null
+  maintenanceRevision: number
+  swapEvidenceRevision: number | null
   history: readonly FleetEvent[]
 }
 export type FleetAction =
   | { type: 'release'; flightId: string; at: string; signed: boolean; reason: string }
   | { type: 'adopt-swap'; hours: number }
   | { type: 'reopen-release'; reason: string }
+  | { type: 'supersede-inspection'; reason: string }
+  | { type: 'revalidate-swap'; reason: string }
 
 export const fleetKey = 'aerofleet:flight-release:v1'
 export const initialFleetDecision: FleetDecision = {
-  revision: 0, flightId: 'AX417', releaseAt: null, swapHours: null, history: [],
+  revision: 0, flightId: 'AX417', releaseAt: null, swapHours: null, maintenanceRevision: 0,
+  swapEvidenceRevision: null, history: [],
 }
 
 export function readFleetDecision(storage: StoragePort): FleetDecision {
@@ -32,7 +37,15 @@ export function readFleetDecision(storage: StoragePort): FleetDecision {
     !('releaseAt' in value) || (value.releaseAt !== null && typeof value.releaseAt !== 'string') ||
     !('swapHours' in value) || (value.swapHours !== null && typeof value.swapHours !== 'number') ||
     !('flightId' in value) || typeof value.flightId !== 'string') throw new Error('Invalid fleet release record.')
-  return value as FleetDecision
+  const record = value as Omit<FleetDecision, 'maintenanceRevision' | 'swapEvidenceRevision'> &
+    Partial<Pick<FleetDecision, 'maintenanceRevision' | 'swapEvidenceRevision'>>
+  return { ...record, maintenanceRevision: record.maintenanceRevision ?? 0,
+    swapEvidenceRevision: record.swapEvidenceRevision ?? (record.swapHours === null ? null : 0) }
+}
+
+export function swapStaleReasons(state: FleetDecision): string[] {
+  return state.swapHours !== null && state.swapEvidenceRevision !== state.maintenanceRevision
+    ? ['The adopted swap relies on superseded inspection evidence. Revalidate it before dispatch.'] : []
 }
 
 export function fleetBlockers(state: FleetDecision): string[] {
@@ -51,7 +64,7 @@ export function transitionFleet(state: FleetDecision, action: FleetAction): Flee
       if (fleetBlockers(state).length) throw new Error(fleetBlockers(state)[0])
       if (!Number.isInteger(action.hours) || action.hours < 0 || action.hours > 6) throw new Error('Swap utilization is outside the feasible window.')
       if (state.swapHours !== null) throw new Error('A swap plan is already adopted.')
-      next = { ...state, swapHours: action.hours }
+      next = { ...state, swapHours: action.hours, swapEvidenceRevision: state.maintenanceRevision }
       break
     case 'reopen-release':
       if (!state.releaseAt) throw new Error('There is no release to reopen.')
@@ -59,11 +72,21 @@ export function transitionFleet(state: FleetDecision, action: FleetAction): Flee
       if (action.reason.trim().length < 12) throw new Error('Explain why the release is being reopened.')
       next = { ...state, releaseAt: null }
       break
+    case 'supersede-inspection':
+      if (!state.releaseAt) throw new Error('A release must exist before inspection evidence can be superseded.')
+      if (action.reason.trim().length < 12) throw new Error('Explain the new inspection evidence.')
+      next = { ...state, maintenanceRevision: state.maintenanceRevision + 1 }
+      break
+    case 'revalidate-swap':
+      if (!swapStaleReasons(state).length) throw new Error('There is no stale swap to revalidate.')
+      if (action.reason.trim().length < 12) throw new Error('Explain the revalidation decision.')
+      next = { ...state, swapEvidenceRevision: state.maintenanceRevision }
+      break
   }
   const event: FleetEvent = {
     revision: state.revision + 1,
-    action: action.type === 'adopt-swap' ? 'swap-adopted' : action.type === 'reopen-release' ? 'release-reopened' : 'release',
-    source: action.type === 'adopt-swap' ? 'swap-impact' : 'availability-timeline',
+    action: action.type === 'adopt-swap' ? 'swap-adopted' : action.type === 'reopen-release' ? 'release-reopened' : action.type === 'supersede-inspection' ? 'inspection-superseded' : action.type === 'revalidate-swap' ? 'swap-revalidated' : 'release',
+    source: action.type === 'adopt-swap' || action.type === 'revalidate-swap' ? 'swap-impact' : 'availability-timeline',
     reason: action.type === 'adopt-swap' ? 'Adopted feasible swap at ' + String(action.hours) + ' hours' : action.reason,
   }
   return { ...next, revision: event.revision, history: [...state.history, event] }

@@ -1,0 +1,21 @@
+import { expect, test } from '@playwright/test'
+
+test('revised inspection evidence stales an adopted swap until reviewed again', async ({ page }) => {
+  await page.goto('/fleet/N742AX/availability')
+  await page.getByLabel('Engineering signature present').check()
+  await page.getByLabel('Authority').selectOption('approver')
+  await page.getByLabel('Release rationale').fill('Initial signed inspection confirms readiness.')
+  await page.getByRole('button', { name: 'Record return to service' }).click()
+  await page.goto('/fleet/N742AX/swaps/N811QX?hours=5')
+  await page.getByLabel('Decision authority').selectOption('maintenance controller')
+  await page.getByRole('button', { name: 'Approve swap plan' }).click()
+  await page.goto('/fleet/N742AX/availability')
+  await page.getByLabel('Release rationale').fill('Revised inspection confirms a new component finding.')
+  await page.getByRole('button', { name: 'Record new inspection revision' }).click()
+  await page.goto('/fleet/N742AX/swaps/N811QX?hours=5')
+  await expect(page.getByRole('alert')).toContainText('superseded inspection evidence')
+  await page.getByLabel('Decision authority').selectOption('maintenance controller')
+  await page.getByLabel('Revalidation rationale').fill('New inspection reviewed for the swap flight window.')
+  await page.getByRole('button', { name: 'Revalidate swap' }).click()
+  await expect(page.getByRole('alert')).toHaveCount(0)
+})

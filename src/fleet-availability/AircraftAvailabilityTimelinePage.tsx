@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { validateNote } from '../domain/workbench/domain'
 import { useWorkbench } from '../state/useWorkbench'
-import { commitFleet, readFleetDecision } from './releaseLedger'
+import { commitFleet, readFleetDecision, swapStaleReasons } from './releaseLedger'
 import {
   earliestDispatchable,
   flightLegs,
@@ -46,6 +46,13 @@ export function AircraftAvailabilityTimelinePage() {
     } catch (error) { setNotice(error instanceof Error ? error.message : 'Reopening failed.') }
   }
 
+  function supersedeInspection() {
+    try {
+      setFleet(commitFleet(window.localStorage, { type: 'supersede-inspection', reason: state.note }))
+      setNotice('Inspection evidence revised; downstream swap must be revalidated.')
+    } catch (error) { setNotice(error instanceof Error ? error.message : 'Inspection revision failed.') }
+  }
+
   return <div className="suite-page">
     <header className="suite-title">
       <div>
@@ -84,6 +91,8 @@ export function AircraftAvailabilityTimelinePage() {
         <h2>Decision</h2>
         <p>Packet AF-204: {fleet.releaseAt ? 'completed' : packet?.status === 'completed' ? 'reopened' : packet?.status ?? 'unavailable'}</p>
         <p>Durable release: {fleet.releaseAt ?? 'pending'} · Revision {fleet.revision}</p>
+        <p>Inspection evidence revision: {fleet.maintenanceRevision}</p>
+        {swapStaleReasons(fleet).map(reason => <p role="alert" key={reason}>{reason}</p>)}
         <label className="suite-field"><span className="suite-field-label">Authority</span>
           <select value={state.role} onChange={event => { dispatch({ type: 'role', role: event.target.value as typeof state.role }); }}>
             <option value="observer">Observer</option><option value="operator">Operator</option><option value="approver">Approver</option>
@@ -95,6 +104,7 @@ export function AircraftAvailabilityTimelinePage() {
         {noteError && <p>{noteError}</p>}
         <button disabled={!canRelease} onClick={release}>Record return to service</button>
         {fleet.releaseAt && <button onClick={reopen}>Reopen release</button>}
+        {fleet.releaseAt && <button onClick={supersedeInspection}>Record new inspection revision</button>}
         <details><summary>Release history</summary><ol>{fleet.history.map(item =>
           <li key={item.revision}>{item.action} · {item.source} · {item.reason}</li>)}</ol></details>
         <p role="status">{notice || state.notice}</p>

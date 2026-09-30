@@ -83,7 +83,7 @@ describe('selected flight persistence', () => {
     const storage = new MemoryStorage(), bound = openSelectedRecord(storage)
     const changed = edit(readFleetDecision(bound))
     storage.fail = true
-    expect(() => saveFleetDecision(bound, changed)).toThrow('Storage full')
+    expect(() => saveFleetDecision(bound, changed)).toThrow('Browser storage rejected the save')
     storage.fail = false
     saveFleetDecision(bound, changed)
     expect(readFleetDecision(openSelectedRecord(storage))).toEqual(changed)

@@ -1,5 +1,7 @@
 import type { StoragePort } from '../workspace/repository'
-import { initialFleetDecision, readFleetDecision, requestSwapReview, transitionFleet, swapStaleReasons } from './releaseLedger'
+import { fleetKey, initialFleetDecision, readFleetDecision, requestSwapReview, transitionFleet, swapStaleReasons } from './releaseLedger'
+import { readStored, writeStored } from '../workspace/storageValidation'
+import { flightCollectionRule } from './collectionValidation'
 import type { FleetDecision } from './releaseLedger'
 import { claimFlightReview, flightReviewInbox } from './engineerWorkload'
 import type { FlightWorkRecord } from './engineerWorkload'
@@ -34,16 +36,10 @@ export function seedFlightCollection(legacy: FleetDecision = initialFleetDecisio
   ], audit: [] }
 }
 export function readFlightCollection(storage: StoragePort): FlightCollection {
-  const raw = storage.getItem(key)
-  if (!raw) return seedFlightCollection(readFleetDecision(storage))
-  const value: unknown = JSON.parse(raw)
-  if (!value || typeof value !== 'object' || !('flights' in value) || !Array.isArray(value.flights) ||
-    !('conditions' in value) || !Array.isArray(value.conditions) || !('audit' in value) || !Array.isArray(value.audit))
-    throw new Error('Invalid flight collection.')
-  return value as FlightCollection
+  return readStored(storage, key, flightCollectionRule, () => seedFlightCollection(readFleetDecision(storage)), fleetKey)
 }
 export function saveFlightCollection(storage: StoragePort, value: FlightCollection): FlightCollection {
-  storage.setItem(key, JSON.stringify(value)); return value
+  return writeStored(storage, key, flightCollectionRule, value)
 }
 export function flightById(value: FlightCollection, id: string): FlightRecord {
   const record = value.flights.find(item => item.id === id)

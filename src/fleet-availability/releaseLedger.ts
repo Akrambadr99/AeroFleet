@@ -1,4 +1,4 @@
-import type { StoragePort } from '../workspace/repository'
+import type { StoragePort, StorageReader } from '../platform/storage-port'
 
 export interface FleetEvent {
   revision: number
@@ -41,7 +41,7 @@ export const initialFleetDecision: FleetDecision = {
   swapEvidenceRevision: null, inspectionOwner: null, swapReviews: [], history: [],
 }
 
-export function readFleetDecision(storage: StoragePort): FleetDecision {
+export function readFleetDecision(storage: StorageReader): FleetDecision {
   const raw = storage.getItem(fleetKey)
   if (!raw) return initialFleetDecision
   const value: unknown = JSON.parse(raw)

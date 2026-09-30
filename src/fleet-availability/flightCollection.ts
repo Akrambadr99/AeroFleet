@@ -1,4 +1,4 @@
-import type { StoragePort } from '../workspace/repository'
+import type { StoragePort, StorageReader } from '../platform/storage-port'
 import { fleetKey, initialFleetDecision, readFleetDecision, requestSwapReview, transitionFleet, swapStaleReasons } from './releaseLedger'
 import { readStored, writeStored } from '../workspace/storageValidation'
 import { flightCollectionRule } from './collectionValidation'
@@ -35,7 +35,7 @@ export function seedFlightCollection(legacy: FleetDecision = initialFleetDecisio
     { id: 'MC-77', revision: 1, active: false, flightIds: ['BX210', 'BX211'] },
   ], audit: [] }
 }
-export function readFlightCollection(storage: StoragePort): FlightCollection {
+export function readFlightCollection(storage: StorageReader): FlightCollection {
   return readStored(storage, key, flightCollectionRule, () => seedFlightCollection(readFleetDecision(storage)), fleetKey)
 }
 export function saveFlightCollection(storage: StoragePort, value: FlightCollection): FlightCollection {

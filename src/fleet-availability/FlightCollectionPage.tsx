@@ -1,16 +1,20 @@
+import { ExplorerControls, ExplorerPagination, ExplorerSelection } from '../workspace/CollectionExplorerControls'
+import { useCollectionExplorer } from '../workspace/useCollectionExplorer'
+import { withCollectionView } from '../workspace/collectionExplorer'
+import { flightExplorerPolicy } from './collectionTriage'
 import { recordDetailPath, recordDecisionPath } from './recordLinks'
 import { Link } from 'react-router-dom'
 import { saveCurrentCollection } from '../workspace/recordStorage'
 import { useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { releaseEngineers } from './engineerWorkload'
-import { archiveFlight, claimSelectedFlight, createFlight, flightInbox, flightRows, readFlightCollection,
+import { archiveFlight, claimSelectedFlight, createFlight, flightInbox, readFlightCollection,
   revalidateFlights, reviseCondition, saveFlightCollection } from './flightCollection'
 
 export function FlightCollectionPage() {
   const [collection, setCollection] = useState(() => readFlightCollection(window.localStorage))
   const [params, setParams] = useSearchParams()
-  const [query, setQuery] = useState(''); const [filter, setFilter] = useState('active')
+  const explorer = useCollectionExplorer(collection.flights, flightExplorerPolicy)
   const [engineer, setEngineer] = useState('eng-lee'); const [checked, setChecked] = useState<string[]>([])
   const [newId, setNewId] = useState(''); const [notice, setNotice] = useState('')
   const selectedId = params.get('flight') ?? 'AX418'
@@ -28,6 +32,7 @@ export function FlightCollectionPage() {
       <article><small>Stale swaps</small><strong>{collection.flights.filter(item => !item.archived && item.decision.swapHours !== null && item.decision.swapEvidenceRevision !== item.decision.maintenanceRevision).length}</strong></article>
     </section>
     <section className="suite-card" aria-label="Flight review queue"><h2>Inspection review queue</h2>
+      <p>This queue covers all active flights. Collection filters below do not limit its scope.</p>
       {flightInbox(collection).length ? <ul>{flightInbox(collection).map(item => <li key={item.reviewId}>
         <button onClick={() => { choose(item.flightId) }}>{item.flightId}</button> · {item.critical ? 'critical' : 'routine'} ·
         {item.assigneeId ?? 'team queue'} · {item.actionable ? 'actionable' : 'stale'}</li>)}</ul> : <p>No active inspection reviews.</p>}
@@ -35,16 +40,18 @@ export function FlightCollectionPage() {
         {releaseEngineers.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
     </section>
     <section className="suite-card" aria-label="Flight collection"><h2>Flights</h2>
-      <label>Search flights <input value={query} onChange={event => { setQuery(event.target.value) }} /></label>
-      <label>Show <select value={filter} onChange={event => { setFilter(event.target.value) }}><option value="active">Active</option>
-        <option value="archived">Archived</option><option value="all">All</option></select></label>
-      {flightRows(collection, query, filter).length ? <ul>{flightRows(collection, query, filter).map(record => <li key={record.id}>
+      <ExplorerControls noun="flights" view={explorer.view} onChange={explorer.setView} states={flightExplorerPolicy.states} onReset={explorer.reset} />
+      {explorer.rows.length ? <ul>{explorer.rows.map(record => <li key={record.id}>
         <label><input type="checkbox" checked={checked.includes(record.id)} onChange={event => {
           setChecked(current => event.target.checked ? [...current, record.id] : current.filter(id => id !== record.id))
         }} /> Select {record.id}</label>
         <button aria-current={selectedId === record.id ? 'true' : undefined} onClick={() => { choose(record.id) }}>
           {record.id} · {record.tail} · {record.family}</button> · r{record.decision.revision} · {record.conditionId}
-        {record.archived ? ' · archived' : ''}</li>)}</ul> : <p>No flights match this view.</p>}
+        {record.archived ? ' · archived' : ''}<small> · Work state: {flightExplorerPolicy.states.find(option => option.value === flightExplorerPolicy.state(record))?.label}</small></li>)}</ul> : <p>No flights match this view. Reset the view or adjust the search and work state.</p>}
+      <ExplorerPagination page={explorer.page} pageCount={explorer.pageCount} matchingCount={explorer.matchingCount} onPageChange={page => { explorer.setView({ page }) }} />
+      <ExplorerSelection selected={checked} visible={explorer.rows.map(record => record.id)} onChange={setChecked} noun="flights" />
+      {selected && !explorer.rows.some(record => record.id === selected.id) && <p>The selected flight remains open outside this page. Detail actions still apply to {selected.id}.{' '}
+        <button onClick={() => { explorer.setView({ query: selected.id, scope: 'all', state: 'all', sort: 'id-asc', page: 1 }) }}>Show selected record</button></p>}
       <button disabled={!checked.length} onClick={() => { const result = revalidateFlights(collection, checked, engineer)
         persist(result.collection, `${String(result.updated.length)} revalidated; ${String(result.skipped.length)} skipped; ${String(result.blocked.length)} blocked.`)
       }}>Revalidate selected swaps</button>
@@ -52,7 +59,8 @@ export function FlightCollectionPage() {
         <label>New flight ID <input value={newId} onChange={event => { setNewId(event.target.value) }} required pattern="[A-Za-z]{2}[0-9]{3}" /></label>
         <button type="submit">Create A320 flight</button></form>
     </section>
-    <section className="suite-card" aria-label="Selected flight"><h2>{selected?.id ?? 'Select a flight'}</h2>{selected && <>
+    <section className="suite-card" aria-label="Selected flight"><h2>{selected?.id ?? 'Select a flight'}</h2>
+      {!selected && <p>The requested flight was not found. Choose a record from the collection.</p>}{selected && <>
       <p>{selected.tail} · {selected.family} · condition {selected.conditionId} · decision r{selected.decision.revision}</p>
       <p>Release {selected.decision.releaseAt ?? 'pending'} · swap {selected.decision.swapHours ?? 'not adopted'} hours · inspection r{selected.decision.maintenanceRevision}</p>
       <p>Reviewer {selected.decision.swapReviews?.find(item => item.status === 'open')?.assignee ?? 'none'}</p>
@@ -68,7 +76,7 @@ export function FlightCollectionPage() {
     </>}</section>
     <section className="suite-card" aria-label="Flight audit"><h2>Collection audit</h2><ol>{collection.audit.toReversed().slice(0, 8).map((item, index) =>
       <li key={index}>{item.action} · {item.id} · {item.related.join(', ') || 'none'}</li>)}</ol></section>
-    <nav aria-label="Selected record workflows">{selected && !selected.archived && <><Link to={recordDetailPath(selected)}>Open record details</Link>{' · '}<Link to={recordDecisionPath(selected)}>Open decision workflow</Link></>} <button onClick={() => { try { setCollection(readFlightCollection(window.localStorage)); setNotice('Workspace refreshed; selection preserved.') } catch (error) { setNotice(error instanceof Error ? error.message : 'Refresh failed.') } }}>Refresh workspace</button></nav>
+    <nav aria-label="Selected record workflows">{selected && !selected.archived && <><Link to={withCollectionView(recordDetailPath(selected), params)}>Open record details</Link>{' · '}<Link to={withCollectionView(recordDecisionPath(selected), params)}>Open decision workflow</Link></>} <button onClick={() => { try { setCollection(readFlightCollection(window.localStorage)); setNotice('Workspace refreshed; selection preserved.') } catch (error) { setNotice(error instanceof Error ? error.message : 'Refresh failed.') } }}>Refresh workspace</button></nav>
     <p role="status">{notice}</p>
   </main>
 }

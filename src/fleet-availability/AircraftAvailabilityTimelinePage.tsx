@@ -1,3 +1,5 @@
+import { SelectedRecordRoute } from './SelectedRecordRoute'
+import { useRecordContext } from '../workspace/RecordScope'
 import { useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { validateNote } from '../domain/workbench/domain'
@@ -10,15 +12,17 @@ import {
   releaseFindings,
 } from './releaseProjection'
 
-export function AircraftAvailabilityTimelinePage() {
+function RecordContent() {
+  const { storage, guard, recordId } = useRecordContext()
+
   const { tail } = useParams()
   const { state, dispatch } = useWorkbench()
   const flights = flightLegs.filter(flight => flight.tail === tail)
-  const [flightId, setFlightId] = useState(flights[0]?.id ?? '')
+  const [flightId, setFlightId] = useState(recordId)
   const [releaseAt, setReleaseAt] = useState('2026-09-16T15:00')
   const [inspectionSigned, setInspectionSigned] = useState(false)
   const [notice, setNotice] = useState('')
-  const [fleet, setFleet] = useState(() => readFleetDecision(window.localStorage))
+  const [fleet, setFleet] = useState(() => readFleetDecision(storage))
   const flight = flights.find(item => item.id === flightId) ?? flights[0]
   const events = useMemo(() => maintenanceEvents.map(item =>
     item.id === 'INSP-204' ? { ...item, signed: inspectionSigned } : item,
@@ -26,29 +30,29 @@ export function AircraftAvailabilityTimelinePage() {
   const findings = flight ? releaseFindings(flight, events, releaseAt) : []
   const packet = state.items.find(item => item.id === 'AF-204')
   const noteError = validateNote(state.note)
-  const canRelease = Boolean(flight && !fleet.releaseAt && findings.length === 0 &&
-    state.role === 'approver' && !noteError)
+  const canRelease = flight?.id === recordId && !fleet.releaseAt && findings.length === 0 &&
+    state.role === 'approver' && !noteError
 
   function release() {
     if (!canRelease) {
       setNotice('Release blocked. Resolve findings, select approver authority, and explain the decision.')
       return
     }
-    setFleet(commitFleet(window.localStorage, { type: 'release', flightId: flight?.id ?? 'AX417', at: releaseAt, signed: inspectionSigned, reason: state.note }))
+    setFleet(commitFleet(storage, { type: 'release', flightId: flight.id, at: releaseAt, signed: inspectionSigned, reason: state.note }))
     dispatch({ type: 'submit-success', id: 'AF-204' })
-    setNotice(`${flight?.id ?? 'Flight'} release recorded against packet AF-204.`)
+    setNotice(`${flight.id} release recorded against packet AF-204.`)
   }
 
   function reopen() {
     try {
-      setFleet(commitFleet(window.localStorage, { type: 'reopen-release', reason: state.note }))
+      setFleet(commitFleet(storage, { type: 'reopen-release', reason: state.note }))
       setNotice('Release reopened; downstream swap eligibility recalculated.')
     } catch (error) { setNotice(error instanceof Error ? error.message : 'Reopening failed.') }
   }
 
   function supersedeInspection() {
     try {
-      setFleet(commitFleet(window.localStorage, { type: 'supersede-inspection', reason: state.note }))
+      setFleet(commitFleet(storage, { type: 'supersede-inspection', reason: state.note }))
       setNotice('Inspection evidence revised; downstream swap must be revalidated.')
     } catch (error) { setNotice(error instanceof Error ? error.message : 'Inspection revision failed.') }
   }
@@ -64,6 +68,7 @@ export function AircraftAvailabilityTimelinePage() {
     {flight ? <>
       <section className="suite-card" aria-label="Flight and release context">
         <h2>Proposed release</h2>
+        {flight.id !== recordId && <p role="alert">No schedule is configured for {recordId}. Existing evidence may be reviewed, but a new release requires this flight's own schedule.</p>}
         <label className="suite-field"><span className="suite-field-label">Flight assignment</span>
           <select value={flight.id} onChange={event => { setFlightId(event.target.value); }}>
             {flights.map(item => <option key={item.id} value={item.id}>{item.id} · {item.departure}</option>)}
@@ -102,9 +107,9 @@ export function AircraftAvailabilityTimelinePage() {
           <textarea value={state.note} onChange={event => { dispatch({ type: 'note', note: event.target.value }); }} />
         </label>
         {noteError && <p>{noteError}</p>}
-        <button disabled={!canRelease} onClick={release}>Record return to service</button>
-        {fleet.releaseAt && <button onClick={reopen}>Reopen release</button>}
-        {fleet.releaseAt && <button onClick={supersedeInspection}>Record new inspection revision</button>}
+        <button disabled={!canRelease} onClick={guard(release)}>Record return to service</button>
+        {fleet.releaseAt && <button onClick={guard(reopen)}>Reopen release</button>}
+        {fleet.releaseAt && <button onClick={guard(supersedeInspection)}>Record new inspection revision</button>}
         <details><summary>Release history</summary><ol>{fleet.history.map(item =>
           <li key={item.revision}>{item.action} · {item.source} · {item.reason}</li>)}</ol></details>
         <p role="status">{notice || state.notice}</p>
@@ -112,3 +117,5 @@ export function AircraftAvailabilityTimelinePage() {
     </> : <p role="alert">No flight assignments exist for this aircraft.</p>}
   </div>
 }
+
+export function AircraftAvailabilityTimelinePage() { return <SelectedRecordRoute><RecordContent /></SelectedRecordRoute> }
